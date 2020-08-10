@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8">
+		<title>Four Origins</title>
+		<style>
+
+		@font-face { font-family:'profont';
+			src:url('FO_files/profontwindows-webfont.woff2') format('woff2'),
+				url('FO_files/profontwindows-webfont.woff') format('woff');
+			font-weight:normal; font-style:normal; }
+		@font-face { font-family: 'strike_fighter';
+    		src:url('FO_files/strikefighter-webfont.woff2') format('woff2'),
+         		url('FO_files/strikefighter-webfont.woff') format('woff');
+    		font-weight: normal; font-style: normal; }
+		html,body { height:100%; margin:0px; font-family:profont; font-size:13px; }
+		table { border-spacing:0px; }	td { padding:0px; margin:0px; }
+		.personInHeader { position: relative; float:left; margin: 0px 2px; padding: 0px 2px; background-color: rgba(0,0,0,0.1618); height: 100%; -webkit-border-radius: 8px; -moz-border-radius: 8px; border-radius: 8px; }
+		.avatarInHeader { display:inline-block; position:relative; margin: 0px 5px 0px 2px; padding: 0px 5px; top:5px; text-align:center; }
+		.gender { position:absolute; margin-left: -5px; padding-top: 4px; }
+		.genderX{ position:absolute; right:0px; }
+		.genderx{ position:absolute; left:0px; }
+		.genderY{ position:absolute; width:inherit; text-align:center; }
+		.gendery{ position:absolute; bottom:0px; width:inherit; text-align:center; }
+		.setting { float: right; }
+		.cell { font-family:strike_fighter; text-align:right; }
+		.cellValue { width:inherit; position:absolute; }
+		.cellPieces { position:absolute; font-family:profont; width:auto; }
+		.avatar { position:absolute; }
+		.avatarInTurn { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #ff0080, 0 0 30px #ff0080, 0 0 40px #ff0080, 0 0 55px #ff0080, 0 0 75px #ff0080; }
+		#wrapper { min-height:100%; background-color:black; }
+		#header { background-color:#888; width: 100%; }
+		#content { background-color:black; }
+		.contentLeft { width: 50%; }
+
+		</style>
+		<script src="FO_files/jquery-2.js"></script>
+		<script src="FO_files/underscore-min.js"></script>
+		<script>
+
+var MOQ = {
+	turn: 0,
+	planePalettes: [], linePalettes: [], pointPalettes: [], colorMatrix: [], resolution: 18,
+	settings: [],
+	people: [], player: null, halos: [],
+	locations: [], locationMatrix: [],
+	multipolarPlane: [],
+	cellYAdjust: 2, genderFontSize: 9, halfWidthGPP: false, latestHover: { x:-1, y:-1 }, latestHoverArr: [],
+
+	debugMultipolarPlane: false
+}
+
+//Kyllästynyt pelimiestemppuihin? Nyt voit pelata parittelupeliä pääsemättä tositoimiin ollenkaan! Samalla opit toimimaan moninapaisessa koordinaatistossa luontevasti kuin pieni eläin. Itse en ole kuitenkaan kyllästynyt, vaan tahdon nussia tosi paljon!
+//nainen suosii sitä jolla on eniten pisteitä
+//this is you. it's your turn
+
+
+
+// HEADER BEGIN
+
+
+
+function drawHeader() { var o; var t; var input;
+	MOQ.headerHeight = Math.floor(window.innerHeight / MOQ.resolution);
+	var header = document.getElementById("header");
+	header.innerHTML = "";
+	header.setAttribute("style","height:" + MOQ.headerHeight + "px;"); header.style.height = MOQ.headerHeight;
+	for(var i = 0; i < MOQ.people.length; i++) {
+		t = { a: "", b: "" };
+		o = MOQ.people[i];
+		if(o == MOQ.player) { t.a = "<div class='avatarInTurn'>"; t.b = "</div>"; }
+		header.innerHTML +=
+			"<div class='personInHeader'>" +
+				"<div class='avatarInHeader'>" + t.a + o.avatar + t.b +
+				"<div class='gender'>\
+					<div class='genderY'>" + o.gender.Y + "</div>\
+					<div class='gendery'>" + o.gender.y + "</div>\
+					<div class='genderX'>" + o.gender.X + "</div>\
+					<div class='genderx'>" + o.gender.x + "</div>\
+				</div>\
+			</div>" + 
+			o.score + " " + o.X + " " + o.Y + "&nbsp;</div>"; }
+	for(var i = 0; i < MOQ.settings.length; i++) {
+		o = MOQ.settings[i];
+		input = document.createElement(o.control);
+		t = document.createTextNode(o.labels);
+		input.appendChild(t);
+		input.setAttribute("onclick", o.options);
+		input.setAttribute("class", "setting");
+		header.appendChild(input); }}
+
+
+
+// HEADER END, SETTINGS BEGIN
+
+
+
+function changeResolution() {
+	if(MOQ.resolution == 18) { MOQ.resolution = 27; }
+	else { MOQ.resolution = 18; }
+	drawHeader();
+	initMultipolarPlane(MOQ.player.domain);
+	drawMultipolarPlane(); }
+
+function Setting(handle,name,control,labels,options) {
+	this.handle = handle;
+	this.name = name;
+	this.control = control;
+	this.labels = labels;
+	this.options = options; }
+
+function newSetting(handle) { var setting;
+	switch(handle) {
+		case "resolution" :
+			setting = new Setting(handle, false, "button", "DISP", "changeResolution();");
+			break; }
+	MOQ.settings.push(setting); }
+
+function initSettings() {
+	newSetting("resolution"); }
+
+
+
+// SETTINGS END, ENGINE BEGIN
+
+
+
+function initTurn() {
+	if(MOQ.turn != 0) {
+		for(var i = 0; i < MOQ.people.length; i++) {
+			placePerson(MOQ.people[i], MOQ.people[i].location); }}
+	MOQ.turn++;
+	drawHeader();
+	initMultipolarPlane(MOQ.player.domain);
+	drawMultipolarPlane(); }
+
+function vectorSum(x1,y1,x2,y2) { var ret = {};
+	ret.x = x1 - y2; //unintended swap?
+	ret.y = y1 + x2;
+	if(ret.x > 17) 		{ ret.x -= 17; }
+	else if(ret.x < 0)  { ret.x += 17; }
+	if(ret.y > 17) 		{ ret.y -= 17; }
+	else if(ret.y < 0)  { ret.y += 17; }
+	return ret; }
+
+function vectorRel(master,slave,l) { var ret;
+	var lm = master.location;
+	var ls = slave.location;
+	ret = vectorSum( ls.x, ls.y, 	l.X, l.Y );
+	ret = getLocation(ret.x, ret.y);
+	return ret; }
+
+function remPiece(p,l) { var i = l.pieces.indexOf(p); l.pieces.splice(i,1); }
+function cell(click,dnUp,other,sex,X,Y,cellX,cellY) {
+	if(dnUp) { initTurn(); }
+	else if((cellX != MOQ.latestHover.x) || (cellY != MOQ.latestHover.y)) {
+		MOQ.latestHover = { x: cellX, y: cellY };
+		for(var i = 0; i < MOQ.latestHoverArr.length; i++) {
+			remPiece(MOQ.latestHoverArr[i].p, MOQ.latestHoverArr[i].l);	}
+		var l2 = gL(other,sex,X,Y);
+		var p = MOQ.player;
+		var l1 = p.location;
+		var ppl = MOQ.people.slice(0);
+		var i = ppl.indexOf(p);
+		ppl.splice(i,1);
+		var l3;
+		MOQ.latestHoverArr = [];
+		var o = {};
+		l2.pieces.push(p);
+		for(var i = 0; i < ppl.length; i++) {
+			o = {};
+			l3 = vectorRel( p, ppl[i], l2 );
+			l3.pieces.push(ppl[i]);
+			o.l = l3;
+			o.p = ppl[i];
+			MOQ.latestHoverArr.push(o); }
+		console.log(MOQ.latestHoverArr);
+		if(click) {
+			//placePerson(p,l2);
+			p.location = l2;
+			remPiece(p,l1);	}
+		drawMultipolarPlane();
+		if(!click) { remPiece(p,l2); }}
+	else if(click) {
+			//placePerson(p,l2);
+			p.location = l2;
+			remPiece(p,l1);	}}
+
+function gL(other,sex,X,Y) {
+	//console.log("other: "+other+", sex: "+sex+", X: "+X+", Y: "+Y);
+	for(var i = 0; i < MOQ.locations.length; i++) {
+		if(MOQ.locations[i].other == other && MOQ.locations[i].sex == sex && MOQ.locations[i].X == X && MOQ.locations[i].Y == Y) { return MOQ.locations[i]; }}}
+
+
+
+// ENGINE END, MULTIPLANE BEGIN
+
+
+
+function gppClearHover() { drawMultipolarPlane(); }
+window.addEventListener("resize", resizeWindow, true);
+function resizeWindow() { var piecesWidth; var piecesHeight; var v;
+	var cellHeight =Math.floor((window.innerHeight - MOQ.headerHeight) / MOQ.resolution);
+	var cellWidth = Math.floor(window.innerWidth / MOQ.resolution);
+	if(MOQ.halfWidthGPP) { cellWidth = cellWidth / 2; }
+	var e = document.getElementsByClassName("cell");
+	for(var i = 0; i < e.length; i++) {
+		e[i].style.height 	= cellHeight + "px";
+		e[i].style.width 	= cellWidth  + "px";
+		if(!MOQ.debugMultipolarPlane){
+			if(!MOQ.halfWidthGPP) 	{ e[i].style.fontSize = cellHeight + "px"; }
+			else 					{ e[i].style.fontSize = Math.floor(cellHeight / 2) + "px"; }}
+		else 						{ e[i].style.color = "black"; }}
+	e = document.getElementsByClassName("cellValue");
+	if(!MOQ.halfWidthGPP)  { v = -MOQ.cellYAdjust + "px";}
+	else 					{v = MOQ.cellYAdjust + "px"; }
+	for(var i = 0; i < e.length; i++) {	e[i].style.marginTop = v; }
+	e = document.getElementsByClassName("cellPieces");
+	v = Math.floor(cellHeight / 1.618) + "px";
+	for(var i = 0; i < e.length; i++) { e[i].style.fontSize = v; }
+	e = document.getElementsByClassName("avatar");
+	for(var i = 0; i < e.length; i++) {
+		piecesWidth = e[i].offsetWidth;
+		piecesHeight= e[i].offsetHeight;
+		e[i].style.left = Math.floor((cellWidth / 2) - (piecesWidth / 2)) + "px";
+		e[i].style.top =  Math.floor((cellHeight/ 2) - (piecesHeight/ 2)) + "px"; }
+	e = document.getElementById("header");
+	e.style.height = cellHeight + "px";
+	e = document.getElementsByClassName("avatarInHeader");
+	var piecesWidth = [];
+	v = Math.floor(cellHeight / 1.618) + "px";
+	for(var i = 0; i < e.length; i++) {
+		e[i].style.fontSize = v;
+		piecesWidth[i] = e[i].clientWidth; }
+	e = document.getElementsByClassName("gender");
+	for(var i = 0; i < e.length; i++) {
+		e[i].style.fontSize = MOQ.genderFontSize + "px";
+		e[i].style.height= cellHeight + "px";
+		e[i].style.marginTop = "-" + cellHeight + "px";
+		e[i].style.width = piecesWidth[i] + "px"; }
+	e = document.getElementsByClassName("genderx");
+	v = Math.floor((cellHeight / 2) - (MOQ.genderFontSize / 2)) + "px";
+	for(var i = 0; i < e.length; i++) { e[i].style.top = v;	}
+	e = document.getElementsByClassName("genderX");
+	for(var i = 0; i < e.length; i++) { e[i].style.top = v;	}}
+
+function drawMultipolarPlane() { var row; var cell; var l; var textColor; var pieces; var buffer;
+	var table = document.getElementById("multipolarPlane");
+	table.innerHTML = "";
+	for(var i = 0; i < MOQ.multipolarPlane.length; i++) {
+		row = table.insertRow(i);
+		for(var j = 0; j < MOQ.multipolarPlane[i].length; j++) {
+			l = MOQ.multipolarPlane[i][j];
+			textColor = "";
+			if(isDark(l.color)) { textColor = "rgba(255,255,255,0.1618);"; }
+			else 				{ textColor = "rgba(0,0,0,0.1618);"; }
+			pieces = [];
+			for(var k = 0; k < l.pieces.length; k++) {
+				buffer = "<div class='avatar';>";
+				if((l.pieces[k].opacity != 1) || (l.pieces[k].glow.length > 0)) {
+					buffer += "<div style='";
+					if(l.pieces[k].opacity != 1) { buffer += "color:rgba(0,0,0," + l.pieces[k].opacity + ");"; }
+					if(l.pieces[k].glow.length >0){buffer += "text-shadow:";
+						for(var m = 0; m < l.pieces[k].glow.length; m++) {
+							buffer += l.pieces[k].glow[m].hor+" "+l.pieces[k].glow[m].ver+
+							" "+l.pieces[k].glow[m].blur+" px "+l.pieces[k].glow[m].color;
+							if(m < l.pieces[k].glow.length) { buffer += ","; }
+							else 							{ buffer += ";"; }}}
+					buffer += ">" + l.pieces[k].avatar + "</div></div>"; }
+				else { buffer += l.pieces[k].avatar + "</div>"; }
+				pieces.push(buffer); }
+			cell = row.insertCell(j);
+			//Mousedownilla vuorossa oleva liikkuu ja mouseupilla muut. Halpuus miähen animaatio
+			cell.innerHTML = "<div class='cell' id='cell"+i+"-"+j+"' style='background-color:" + l.color + ";'\
+				onmousedown='cell(true,false," +l.other+","+l.sex+","+l.X+","+l.Y+","+i+","+j+");'\
+				onmouseup=  'cell(true,true," + l.other+","+l.sex+","+l.X+","+l.Y+","+i+","+j+");'\
+				onmouseover='cell(false,false,"+l.other+","+l.sex+","+l.X+","+l.Y+","+i+","+j+");'>\
+				<div class='cellValue' style='color:" + textColor + ";'>" +
+					l.value + "<div style='width:2px; display:inline; font-size:16px;'>&nbsp;</div></div>\
+				<div class='cellPieces'>" + 
+					pieces + "</div></div>";	
+			// DEBUG BEGIN
+			if(MOQ.debugMultipolarPlane) {
+				if(l.other) { var other = "O"; } else { var other = "S"; }
+				if(l.sex)	{ var sex = "M"; }	 else { var sex = "F"; }
+				cell.innerHTML = "<div class='cell' style='background-color:" + l.color + "; font-family:tahoma;'>" +
+				"c=(" + l.x + "," + l.y + "),C=(" + l.X + "," + l.Y + ")<br />" +
+				l.value + "," + other + "," + sex +
+				"</div>"; }}}
+			// DEBUG END
+	resizeWindow(); }
+
+function initMultipolarPlane(domain) { var plane = []; var buffer; var x; var y;
+	var div = document.getElementById("contentLeft");
+	for(var i = 0; i < MOQ.resolution; i++) { buffer = [];
+		for(var j = 0; j < MOQ.resolution; j++) { 
+			x = i;
+			y = j;
+			if(x >= MOQ.locationMatrix.length ) { x -= MOQ.locationMatrix.length; }
+			if(y >= MOQ.locationMatrix.length ) { y -= MOQ.locationMatrix.length; }
+			buffer.push(MOQ.locationMatrix[y][x]); }
+		plane.push(buffer); }
+	MOQ.multipolarPlane = plane; }
+
+
+
+// MULTIPLANE END, PEOPLE BEGIN
+
+
+
+function placePerson(person,location) {
+	location.pieces.push(person);
+	person.location = location;
+	person.x = location.x;
+	person.y = location.y;
+	person.X = location.X;
+	person.Y = location.Y; }
+
+function initPersonLocation(sex,other) { var ret = {};
+	if(sex) { ret.x = 4; }
+	else	{ ret.x = 13;}
+	if(other){ret.y = 13;}
+	else	{ ret.y = 4; }
+	return ret; }
+
+function makePhantom(glow,opacity,person) {
+	var ret = Object.assign({}, person);
+	ret.glow = glow;
+	ret.opacity = opacity;
+	return ret; }
+function Person(sex,other,present,avatar) {
+	this.glow = [];
+	this.opacity = 1;
+	this.sex = sex;
+	this.gender = { x: 1, X: 1, y: 1, Y: 1 };
+	this.self = other;
+	this.present = present;
+	this.avatar = avatar;
+	this.score = 0;
+	var location = initPersonLocation(sex,other);
+	this.location = location;
+	this.x = location.x;
+	this.y = location.y;
+	this.domain = { sex : sex, other : other }; }
+
+function getLocation(x,y) {
+	for(var i = 0; i < MOQ.locations.length; i++) {
+		if(x == MOQ.locations[i].x && y == MOQ.locations[i].y) { return MOQ.locations[i]; }}}
+/*function getLocation2(x,y) {
+	for(var i = 0; i < MOQ.locations.length; i++) {
+		if(y == MOQ.locations[i].x && x == MOQ.locations[i].y) { return MOQ.locations[i]; }}}*/
+
+function newPerson(sex,other,present,avatar) {
+	var person = new Person(sex,other,present,avatar);
+	MOQ.people.push(person);
+	var location = getLocation(person.x, person.y);
+	placePerson(MOQ.people[MOQ.people.length - 1], location); }
+
+function initHalos() {
+	newHalo([[0,0,5,"#fff"],[0,0,10,"#fff"],[0,0,20,"#ff080"],[0,0,30,"#ff0080"],[0,0,40,"#ff080"],[0,0,55,"#ff0080"],[0,0,75, "ff0080"]], true); }
+
+function Halo(arr) { this.hor = arr[0]; this.ver = arr[1]; this.blur = arr[2]; this.color = arr[3]; }
+function newHalo(arr,save) { var ret = []; var buffer;
+	for(var i = 0; i < arr.length; i++) {
+		buffer = new Halo(arr);
+		ret.push(buffer); }
+	if(save) { MOQ.halos.push(ret); }
+	return ret; }
+
+function initPeople() {
+	initHalos();
+	newPerson(false,false,true,"💋");
+	newPerson(true,false,true,"👨");
+	newPerson(false,true,true,"👩");
+	newPerson(true,true,true,"🚶");
+	MOQ.player = MOQ.people[1]; }
+
+
+
+// PEOPLE END, LOCATIONS BEGIN
+
+
+
+function quantifyLocationValue(l) { var ret;
+	var x = Math.abs(l.X);
+	var y = Math.abs(l.Y);
+	if(x >= y) { ret = y;
+		if(!l.sex) { ret = 5 - x; }}
+	else { ret = x - y; }	
+	return ret; }
+
+function qualifyLocationDomain(y,x) { var ret = {};
+	if(x < 9){ ret.other = false;}
+	else	 { ret.other = true; }
+	if(y < 9){ ret.sex = true; }
+	else	 { ret.sex = false;}
+	return ret; }
+
+function Location(x,y) {
+	this.x = x;
+	this.y = y;
+	var domain = qualifyLocationDomain(x,y);
+	this.domain = domain;
+	this.sex = domain.sex;
+	this.other = domain.other;
+	this.pieces = []; }
+function newLocation(x,y) {
+	var location = new Location(x,y);
+	MOQ.locations.push(location); }
+
+function relativize(l) { var x = l.y; var y = l.x;
+	if(l.sex && !l.other)		{ l.X = x - 4;
+								  l.Y = -(y - 4); }
+	else if(l.sex && l.other)	{ l.X = x - 13;
+								  l.Y = -(y - 4); }
+	else if(!l.sex && l.other)	{ l.X = x - 13;
+								  l.Y = -(y - 13); }
+	else if(!l.sex && !l.other)	{ l.X = x - 4;
+								  l.Y = -(y - 13); }}
+
+function initLocations() { var buffer;
+	for(var y = 0; y < 18; y++) {
+		for(var x = 0; x < 18; x++) {
+			newLocation(x,y); }}
+	for(var y = 0; y < 18; y++) { buffer = [];
+		for(var x = 0; x < 18; x++) {
+			buffer.push(MOQ.locations[(y * 18) + x]); }
+		MOQ.locationMatrix.push(buffer); }	
+	for(var i = 0; i < MOQ.locations.length; i++) {
+		relativize(MOQ.locations[i]); }
+	for(var i = 0; i < MOQ.locations.length; i++) {
+		MOQ.locations[i].value = quantifyLocationValue(MOQ.locations[i]); }
+	for(var y = 0; y < MOQ.colorMatrix.length; y++) {
+		for(var x = 0; x < MOQ.colorMatrix[y].length; x++) {
+			MOQ.locationMatrix[x][y].color = MOQ.colorMatrix[x][y]; }}}
+
+
+
+// LOCATION END, PALETTE BEGIN
+
+
+
+function isDark(color) {
+	color = hexToRgb(color);
+	if(color.r + color.g + color.b < 100) { return true; }}
+
+function hexToRgb(hex) { var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex); return result ? {
+	r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null; }
+function rgbToHex(r, g, b) { return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1); }
+
+function blend(from,to,swatches) { var ret = []; var buffer = {};
+	from = hexToRgb(from); to = hexToRgb(to);
+	if(swatches < 2) {
+		buffer.r = Math.floor(from.r + ((to.r - from.r) / 2));
+		buffer.g = Math.floor(from.g + ((to.g - from.g) / 2));
+		buffer.b = Math.floor(from.b + ((to.b - from.b) / 2));
+		ret.push(rgbToHex( buffer.r, buffer.g, buffer.b )); return ret; }
+	else {
+		for(var i = 1; i <= swatches; i++) {
+			buffer.r = Math.floor((from.r + to.r) / (swatches * i));
+			buffer.g = Math.floor((from.g + to.g) / (swatches * i));
+			buffer.b = Math.floor((from.b + to.b) / (swatches * i));
+			ret.push(rgbToHex( buffer.r, buffer.g, buffer.b )); }
+		return ret; }}
+
+function blend2(from,to,swatches) { var ret = []; var buffer = {};
+	var r1; var r2; var g1; var g2; var b1; var b2; var rd; var gd; var bd;
+	from = hexToRgb(from); to = hexToRgb(to);
+	r1 = from.r / 255; r2 = to.r / 255; rd = Math.abs(r1 - r2);
+	g1 = from.g / 255; g2 = to.g / 255; gd = Math.abs(g1 - g2);
+	b1 = from.b / 255; b2 = to.b / 255; bd = Math.abs(b1 - b2);
+	for(var i = 1; i <= swatches; i++) {
+		buffer.r = Math.floor(255 * (r1 + (i * (rd / (swatches + 1)))));
+		buffer.g = Math.floor(255 * (g1 + (i * (gd / (swatches + 1)))));
+		buffer.b = Math.floor(255 * (b1 + (i * (bd / (swatches + 1)))));
+		ret.push(rgbToHex( buffer.r, buffer.g, buffer.b )); }
+	return ret; }
+
+function blend3(from,to,swatches,d,reverse,reverse2) { var ret = []; var buffer = {};
+	from = hexToRgb(from); to = hexToRgb(to);
+	if(!(d.x < 0)) {
+		for(var i = 1; i <= swatches; i++){
+			if(from.r > to.r)  { buffer.r = Math.floor((from.r + to.r) / (swatches * i)); }
+			else				{buffer.r = 255 - Math.floor((from.r - to.r) / (swatches * i)); }
+			if(from.g > to.g)  { buffer.g = Math.floor((from.g + to.g) / (swatches * i)); }
+			else				{buffer.g = 255 - Math.floor((from.g - to.g) / (swatches * i)); }
+			if(from.b > to.b)  { buffer.b = Math.floor((from.b + to.b) / (swatches * i)); }
+			else				{buffer.b = 255 - Math.floor((from.b - to.b) / (swatches * i)); }
+			ret.push(rgbToHex( buffer.r, buffer.g, buffer.b )); }}
+	else {
+		for(var i = 1; i <= swatches; i++){
+			buffer.r = Math.floor(255 - (to.r + (to.r - from.r) * (i / swatches)));
+			buffer.g = Math.floor(255 - (to.g + (to.g - from.g) * (i / swatches)));
+			buffer.b = Math.floor(255 - (to.b + (to.b - from.b) * (i / swatches)));
+			ret.push(rgbToHex( buffer.r, buffer.g, buffer.b ));
+			ret.reverse(); }}
+	if(reverse) {
+		ret = [];
+		for(var i = 1; i <= swatches; i++){
+			buffer.r = Math.floor(255 - (to.r + (to.r - from.r) * (i / swatches)));
+			buffer.g = Math.floor(255 - (to.g + (to.g - from.g) * (i / swatches)));
+			buffer.b = Math.floor(255 - (to.b + (to.b - from.b) * (i / swatches)));
+			ret.push(rgbToHex( buffer.r, buffer.g, buffer.b ));
+			ret.reverse(); }}
+	if(reverse2) {
+		ret = [];
+		for(var i = 1; i <= swatches; i++){
+			buffer.r = Math.floor(to.r - (((to.r - from.r) / (swatches * i))));
+			buffer.g = Math.floor(to.g - (((to.g - from.g) / (swatches * i))));
+			buffer.b = Math.floor(to.b - (((to.b - from.b) / (swatches * i)))); //XXX BAD
+			ret.push(rgbToHex( buffer.r, buffer.g, buffer.b )); }}
+	return ret; }
+
+function determineDirection(from, to, call) { var ret = { x : 0, y : 0 };
+	if(from.x < to.x)		{ ret.x++; }
+	else if(from.x > to.x)	{ ret.x--; }
+	if(from.y < to.y)		{ ret.y++; }
+	else if(from.y > to.y)	{ ret.y--; }
+	//if(call) { console.log(from.x + "," + from.y + " -> " + to.x + "," + to.y + " = " + ret.x + "," + ret.y); }
+	return ret; }
+
+function colorGoodSegment(m, low, far, high) { var d1; var d2; var d3; var b;
+	d1 = determineDirection(low, far); d2 = determineDirection(far,high); d3 = determineDirection(low,high);
+	b = blend( m[low.x][low.y], m[far.x][far.y], 2 );
+	m[low.x + d1.x][low.y + d1.y] = b[0];		m[low.x + (2 * d1.x)][low.y + (2 * d1.y)] = b[1];
+	b = blend( m[far.x][far.y], m[high.x][high.y], 2 );
+	m[far.x + d2.x][far.y + d2.y] = b[1];		m[far.x + (2 * d2.x)][far.y + (2 * d2.y)] = b[0];
+	b = blend2( m[high.x][high.y], m[low.x][low.y], 2 );
+	m[low.x + d3.x][low.y + d3.y] = b[1];		m[low.x + (2 * d3.x)][low.y + (2 * d3.y)] = b[0];
+	b = blend( m[low.x + d1.x][low.y + d1.y], m[high.x - d2.x][high.y - d2.y], 1 );
+	m[low.x + d1.x + d3.x][low.y + d1.y + d3.y] = b[0];
+	return m; }
+
+function colorBadSegment(m, low, far, high) { var d1; var d2; var d3; var b;
+	d1 = determineDirection(low, far); d2 = determineDirection(far,high); d3 = determineDirection(low,high);
+	b = blend( m[low.x][low.y], m[far.x][far.y], 1 );		m[low.x + d1.x][low.y + d1.y] = b[0];
+	b = blend( m[far.x][far.y], m[high.x][high.y], 1 );		m[far.x + d2.x][far.y + d2.y] = b[0];
+	b = blend( m[low.x][low.y], m[high.x][high.y], 1 );		m[low.x + d3.x][low.y + d3.y] = b[0];
+	return m; }
+
+function colorLineSegment(m, low, high, a, b ) { var d; var b; 
+	d = determineDirection(low, high, true);	b = blend3( m[low.x][low.y], m[high.x][high.y], 2, d, a, b );
+	m[high.x - d.x][high.y - d.y] = b[1];		m[high.x - (2 * d.x)][high.y - (2 * d.y)] = b[0];
+	return m; }
+
+function makeColorMatrix() { var b; var p; var m = [];
+	for(var i = 0; i < 18; i++) { b = [];
+		for(var j = 0; j < 18; j++) { b.push("#fff"); }
+		m.push(b);	}
+	 m[4][4] = getPointPalette(true, false).color;
+	p = getPlanePalette(false,true,true);	m[3][3] = p.low;	m[0][3] = p.far;	m[0][0] = p.high;
+	m = colorGoodSegment(m, {x : 3, y : 3}, {x : 0, y : 3}, {x : 0, y : 0});
+	p = getPlanePalette(false,true,false);	m[3][2] = p.low;	m[1][0] = p.far;	m[3][0] = p.high;
+	m = colorBadSegment( m, {x : 3, y : 2}, {x : 1, y : 0}, {x : 3, y : 0});
+	p = getLinePalette(true,true,true,false);	m[4][3] = p.low;	m[4][0] = p.high;
+	m = colorLineSegment(m, {x : 4, y : 3}, {x : 4, y : 0});
+	p = getPlanePalette(true,true,true);	m[5][3] = p.low;	m[8][3] = p.far;	m[8][0] = p.high;
+	m = colorGoodSegment(m, {x : 5, y : 3}, {x : 8, y : 3}, {x : 8, y : 0});
+	p = getPlanePalette(true,true,false);	m[5][2] = p.low;	m[7][0] = p.far;	m[5][0] = p.high;
+	m = colorBadSegment( m, {x : 5, y : 2}, {x : 7, y : 0}, {x : 5, y : 0});
+	p = getLinePalette(false,true,true,false);	m[5][4] = p.low;	m[8][4] = p.high;
+	m = colorLineSegment(m, {x : 5, y : 4}, {x : 8, y : 4}, true, true);
+	p = getPlanePalette(true,false,true);	m[5][5] = p.low;	m[8][5] = p.far;	m[8][8] = p.high;
+	m = colorGoodSegment(m, {x : 5, y : 5}, {x : 8, y : 5}, {x : 8, y : 8});
+	p = getPlanePalette(true,false,false);	m[5][6] = p.low;	m[7][8] = p.far;	m[5][8] = p.high;
+	m = colorBadSegment( m, {x : 5, y : 6}, {x : 7, y : 8}, {x : 5, y : 8});
+	p = getLinePalette(true,true,false,false);	m[4][5] = p.low;	m[4][8] = p.high;
+	m = colorLineSegment(m, {x : 4, y : 5}, {x : 4, y : 8});
+	p = getPlanePalette(false,false,true);	m[3][5] = p.low;	m[0][5] = p.far;	m[0][8] = p.high;
+	m = colorGoodSegment(m, {x : 3, y : 5}, {x : 0, y : 5}, {x : 0, y : 8});
+	p = getPlanePalette(false,false,false);	m[3][6] = p.low;	m[1][8] = p.far;	m[3][8] = p.high;
+	m = colorBadSegment( m, {x : 3, y : 6}, {x : 1, y : 8}, {x : 3, y : 8});
+	p = getLinePalette(false,true,false,false);	m[3][4] = p.low;	m[0][4] = p.high;
+	m = colorLineSegment(m, {x : 3, y : 4}, {x : 0, y : 4}, true, true);
+	 m[13][4]= getPointPalette(true, true ).color;
+	p = getPlanePalette(false,true,true);	m[14][5] = p.low;	m[17][5] = p.far;	m[17][8] = p.high;
+	m = colorGoodSegment(m, {x : 14, y : 5}, {x : 17, y : 5}, {x : 17, y : 8});
+	p = getPlanePalette(false,true,false);	m[14][6] = p.low;	m[16][8] = p.far;	m[14][8] = p.high;
+	m = colorBadSegment( m, {x : 14, y : 6}, {x : 16, y : 8}, {x : 14, y : 8});
+	p = getLinePalette(true,true,false,true);	m[13][5] = p.low;	m[13][8] = p.high;
+	m = colorLineSegment(m, {x : 13, y : 5}, {x : 13, y : 8});
+	p = getPlanePalette(true,true,true);	m[12][5] = p.low;	m[9][5] = p.far;	m[9][8] = p.high;
+	m = colorGoodSegment(m, {x : 12, y : 5}, {x : 9, y : 5}, {x : 9, y : 8});
+	p = getPlanePalette(true,true,false);	m[12][6] = p.low;	m[10][8] = p.far;	m[12][8] = p.high;
+	m = colorBadSegment( m, {x : 12, y : 6}, {x : 10, y : 8}, {x : 12, y : 8});
+	p = getLinePalette(false,true,false,true);	m[12][4] = p.low;	m[9][4] = p.high;
+	m = colorLineSegment(m, {x : 12, y : 4}, {x : 9, y : 4}, true, true);
+	p = getPlanePalette(true,false,true);	m[12][3] = p.low;	m[9][3] = p.far;	m[9][0] = p.high;
+	m = colorGoodSegment(m, {x : 12, y : 3}, {x : 9, y : 3}, {x : 9, y : 0});
+	p = getPlanePalette(true,false,false);	m[12][2] = p.low;	m[10][0] = p.far;	m[12][0] = p.high;
+	m = colorBadSegment( m, {x : 12, y : 2}, {x : 10, y : 0}, {x : 12, y : 0});
+	p = getLinePalette(true,true,true,true);	m[13][3] = p.low;	m[13][0] = p.high;
+	m = colorLineSegment(m, {x : 13, y : 3}, {x : 13, y : 0});
+	p = getPlanePalette(false,false,true);	m[14][3] = p.low;	m[17][3] = p.far;	m[17][0] = p.high;
+	m = colorGoodSegment(m, {x : 14, y : 3}, {x : 17, y : 3}, {x : 17, y : 0});
+	p = getPlanePalette(false,false,false);	m[14][2] = p.low;	m[16][0] = p.far;	m[14][0] = p.high;
+	m = colorBadSegment( m, {x : 14, y : 2}, {x : 16, y : 0}, {x : 14, y : 0});
+	p = getLinePalette(false,true,true,true);	m[14][4] = p.low;	m[17][4] = p.high;
+	m = colorLineSegment(m, {x : 14, y : 4}, {x : 17, y : 4}, true, true);
+	 m[4][13]= getPointPalette(false,false).color;
+	p = getLinePalette(false,false,false,false);	m[3][13] = p.low;	m[0][13] = p.high;
+	m = colorLineSegment(m, {x : 3, y : 13}, {x : 0, y : 13});
+	p = getPlanePalette(false,true,true);	m[0][9] = p.low;	m[0][12] = p.far;	m[3][12] = p.high;
+	m = colorGoodSegment(m, {x : 0, y : 9}, {x : 0, y : 12}, {x : 3, y : 12});
+	p = getPlanePalette(false,true,false);	m[1][9] = p.low;	m[3][11] = p.far;	m[3][9] = p.high;
+	m = colorBadSegment( m, {x : 1, y : 9}, {x : 3, y : 11}, {x : 3, y : 9});
+	p = getLinePalette(true,false,true,false);	m[4][12] = p.low;	m[4][9] = p.high;
+	m = colorLineSegment(m, {x : 4, y : 12}, {x : 4, y : 9}, false, true );
+	p = getPlanePalette(false,false,false);	m[7][9] = p.low;	m[5][11] = p.far;	m[5][9] = p.high;
+	m = colorBadSegment( m, {x : 7, y : 9}, {x : 5, y : 11}, {x : 5, y : 9});
+	p = getPlanePalette(false,false,true);	m[8][9] = p.low;	m[8][12] = p.far;	m[5][12] = p.high;
+	m = colorGoodSegment( m, {x : 8, y : 9}, {x : 8, y : 12}, {x : 5, y : 12});
+	p = getLinePalette(false,false,true,false);	m[5][13] = p.low;	m[8][13] = p.high;
+	m = colorLineSegment(m, {x : 5, y : 13}, {x : 8, y : 13}, false, true );
+	p = getPlanePalette(true,false,true);	m[8][17] = p.low;	m[8][14] = p.far;	m[5][14] = p.high;
+	m = colorGoodSegment( m, {x : 8, y : 17}, {x : 8, y : 14}, {x : 5, y : 14});
+	p = getPlanePalette(true,false,false);	m[7][17] = p.low;	m[5][15] = p.far;	m[5][17] = p.high;
+	m = colorBadSegment( m, {x : 7, y : 17}, {x : 5, y : 15}, {x : 5, y : 17});
+	p = getLinePalette(true,false,false,false);	m[4][14] = p.low;	m[4][17] = p.high;
+	m = colorLineSegment(m, {x : 4, y : 14}, {x : 4, y : 17}, false, true);
+	p = getPlanePalette(true,true,false);	m[1][17] = p.low;	m[3][15] = p.far;	m[3][17] = p.high;
+	m = colorBadSegment( m, {x : 1, y : 17}, {x : 3, y : 15}, {x : 3, y : 17});
+	p = getPlanePalette(true,true,true);	m[0][17] = p.low;	m[0][14] = p.far;	m[3][14] = p.high;
+	m = colorGoodSegment( m, {x : 0, y : 17}, {x : 0, y : 14}, {x : 3, y : 14});
+	 m[13][13]=getPointPalette(false,true ).color;
+	p = getPlanePalette(true,false,true);	m[9][9] = p.low;	m[9][12] = p.far;	m[12][12] = p.high;
+	m = colorGoodSegment( m, {x: 9, y: 9}, {x: 9, y: 12}, {x: 12, y: 12} );
+	p = getPlanePalette(true,false,false);	m[10][9] = p.low;	m[12][11] = p.far;	m[12][9] = p.high;
+	m = colorBadSegment( m, {x: 10, y: 9}, {x: 12, y: 11}, {x: 12, y: 9} );
+	p = getLinePalette(true,false,true,true);	m[13][12] = p.low;	m[13][9] = p.high;
+	m = colorLineSegment(m, {x : 13, y : 12}, {x : 13, y : 9}, false, true);
+	p = getPlanePalette(true,true,false);	m[16][9] = p.low;	m[14][11] = p.far;	m[14][9] = p.high;
+	m = colorBadSegment( m, {x: 16, y: 9}, {x: 14, y: 11}, {x: 14, y: 9} );
+	p = getPlanePalette(true,true,true);	m[17][9] = p.low;	m[17][12] = p.far;	m[14][12] = p.high;
+	m = colorGoodSegment( m, {x: 17, y: 9}, {x: 17, y: 12}, {x: 14, y: 12} );
+	p = getLinePalette(false,false,true,true);	m[14][13] = p.low;	m[17][13] = p.high;
+	m = colorLineSegment(m, {x : 14, y : 13}, {x : 17, y : 13}, false, true);
+	p = getPlanePalette(false,true,true);	m[17][17] = p.low;	m[17][14] = p.far;	m[14][14] = p.high;
+	m = colorGoodSegment( m, {x: 17, y: 17}, {x: 17, y: 14}, {x: 14, y: 14} );
+	p = getPlanePalette(false,true,false);	m[16][17] = p.low;	m[14][15] = p.far;	m[14][17] = p.high;
+	m = colorBadSegment( m, {x: 16, y: 17}, {x: 14, y: 15}, {x: 14, y: 17} );
+	p = getLinePalette(true,false,false,true);	m[13][14] = p.low;	m[13][17] = p.high;
+	m = colorLineSegment(m, {x : 13, y : 14}, {x : 13, y : 17}, false, true);
+	p = getPlanePalette(false,false,false);	m[10][17] = p.low;	m[12][15] = p.far;	m[12][17] = p.high;
+	m = colorBadSegment( m, {x: 10, y: 17}, {x: 12, y: 15}, {x: 12, y: 17} );
+	p = getPlanePalette(false,false,true);	m[9][17] = p.low;	m[9][14] = p.far;	m[12][14] = p.high;
+	m = colorGoodSegment( m, {x: 9, y: 17}, {x: 9, y: 14}, {x: 12, y: 14} );
+	p = getLinePalette(false,false,false,true);	m[12][13] = p.low;	m[9][13] = p.high;
+	m = colorLineSegment(m, {x : 12, y : 13}, {x : 9, y : 13}, false, true);
+	return m; }
+
+function getPlanePalette(x,y,good) {
+	for(var i = 0; i < MOQ.planePalettes.length; i++) {
+		if(x == MOQ.planePalettes[i].x && y == MOQ.planePalettes[i].y && good == MOQ.planePalettes[i].good) {
+			return MOQ.planePalettes[i]; }}}
+function PlanePalette(x,y,good,low,far,high) {
+	this.x = x;
+	this.y = y;
+	this.good = good;
+	this.low = low;
+	this.far = far;
+	this.high = high; }
+function newPlanePalette(x,y,good,low,far,high) { var palette = new PlanePalette(x,y,good,low,far,high);
+	MOQ.planePalettes.push(palette); }
+
+function getLinePalette(axis,sex,sign,other) {
+	for(var i = 0; i < MOQ.linePalettes.length; i++) {
+		if(axis == MOQ.linePalettes[i].axis && sex == MOQ.linePalettes[i].sex && sign == MOQ.linePalettes[i].sign && other == MOQ.linePalettes[i].other) { return MOQ.linePalettes[i]; }}}
+function LinePalette(axis,sex,sign,other,low,high) {
+	this.axis = axis; this.sex = sex; this.sign = sign; this.other = other; this.low = low; this.high = high; }
+function newLinePalette(axis,sex,sign,other,low,high) { var palette = new LinePalette(axis,sex,sign,other,low,high);
+	MOQ.linePalettes.push(palette); }
+
+function getPointPalette(sex,other) {
+	for(var i = 0; i < MOQ.pointPalettes.length; i++) {
+		if(sex == MOQ.pointPalettes[i].sex && other == MOQ.pointPalettes[i].other) { return MOQ.pointPalettes[i]; }}}
+function PointPalette(sex,other,color) { this.sex = sex; this.other = other; this.color = color; }
+function newPointPalette(sex,other,color) {var palette = new PointPalette(sex,other,color); MOQ.pointPalettes.push(palette);}
+
+function initPalette() {
+	newPlanePalette(false,true,true, "#FFFEBC","#424100","#FFFE00");
+	newPlanePalette(false,true,false,"#C87CFF","#48007E","#8900FE");
+	newPlanePalette(true, true,true, "#FFDDBC","#462300","#FF7700");
+	newPlanePalette(true, true,false,"#B9CDFF","#00257F","#0043FF");
+	newPlanePalette(true,false,true, "#FFBBBD","#443233","#FF0000");
+	newPlanePalette(true,false,false,"#BAFFFF","#1C8080","#00FFFF");
+	newPlanePalette(false,false,true,"#FFBBD5","#44323E","#FF00BF");
+	newPlanePalette(false,false,false,"#BAFFCC","#1C8035","#2EFF62");
+	 newLinePalette(false,false,false,false,"#DDDDDD","#888888");
+	newLinePalette(false,false,true, false,"#DDDDDD","#888888");
+	newLinePalette(false,true, false,false,"#222222","#666666");
+	newLinePalette(false,true, true, false,"#222222","#666666");
+	 newLinePalette(false,false,false,true, "#DDDDDD","#888888");
+	newLinePalette(false,false,true, true, "#DDDDDD","#888888");
+	newLinePalette(false,true, false,true, "#222222","#666666");
+	newLinePalette(false,true, true, true, "#222222","#666666");
+	 newLinePalette(true, false,false,false,"#002840","#00A2FF");
+	newLinePalette(true, false,true, false,"#0E2C40","#0098FE");
+	newLinePalette(true, true, false,false,"#BBFFE1","#00FFBB");
+	newLinePalette(true, true, true, false,"#B7A8FF","#5500FF");
+	 newLinePalette(true, false,false,true, "#0E2C40","#0098FE");
+	newLinePalette(true, false,true, true, "#002840","#00A2FF");
+	newLinePalette(true, true, false,true, "#B7A8FF","#5500FF");
+	newLinePalette(true, true, true, true, "#BBFFE1","#00FFBB");
+	 newPointPalette(false,false,"#FFFFFF");
+	newPointPalette(false,true, "#FFFFFF");
+	newPointPalette(true, false,"#000000");
+	newPointPalette(true, true, "#000000");
+	MOQ.colorMatrix = makeColorMatrix(); }
+
+
+
+function init() {
+	initPalette();
+	initLocations();
+	initPeople();
+	initSettings();
+	initTurn();
+}
+
+
+		</script>
+	</head>
+	<body onload="init();">
+		<div id="wrapper">
+			<div id="header"></div>
+			<div id="content">
+				<div class="contentLeft" onmouseleave="gppClearHover();">
+					<table id="multipolarPlane"></table>
+				</div>
+				<div class="contentRight">
+					<table id="naturalPlane"></table>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
